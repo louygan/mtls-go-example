@@ -5,6 +5,8 @@ if [[ $1 = "cleanup" ]]; then
   rm -rf 2_intermediate
   rm -rf 3_application
   rm -rf 4_client
+  rm -rf 5_application
+  rm -rf 6_client
   
   exit 0
 fi
@@ -20,7 +22,9 @@ if [[ $2 == "" ]]; then
 fi
 
 
-echo 
+if [ ! -d 1_root ]; then
+
+    echo 
 echo Generate the root key
 echo ---
 mkdir -p 1_root/private
@@ -105,6 +109,10 @@ cat 2_intermediate/certs/intermediate.cert.pem \
 
 chmod 444 2_intermediate/certs/ca-chain.cert.pem
 
+fi
+
+
+if [ ! -d 3_application ]; then
 
 echo 
 echo Create the application key
@@ -188,3 +196,95 @@ openssl ca -config intermediate_openssl.cnf \
       -out 4_client/certs/$1.cert.pem
 
 chmod 444 4_client/certs/$1.cert.pem
+
+fi
+
+
+if [ $# -ge 4 ]; then
+if [ ! -d 5_application ]; then
+
+echo 
+echo Create the application key
+echo ---
+mkdir -p 5_application/private
+openssl genrsa \
+      -passout pass:$4 \
+    -out 5_application/private/$3.key.pem 2048
+
+chmod 444 5_application/private/$3.key.pem
+
+
+echo 
+echo Create the application signing request
+echo ---
+mkdir -p 5_application/csr
+openssl req -config intermediate_openssl.cnf \
+      -subj "/C=US/ST=Denial/L=Springfield/O=Dis/CN=$3" \
+      -passin pass:$4 \
+      -key 5_application/private/$3.key.pem \
+      -new -sha256 -out 5_application/csr/$3.csr.pem
+
+
+echo 
+echo Create the application certificate
+echo ---
+mkdir -p 5_application/certs
+openssl ca -config intermediate_openssl.cnf \
+      -passin pass:$4 \
+      -extensions server_cert -days 375 -notext -md sha256 \
+      -in 5_application/csr/$3.csr.pem \
+      -out 5_application/certs/$3.cert.pem
+
+chmod 444 5_application/certs/$3.cert.pem
+
+
+echo 
+echo Validate the certificate
+echo ---
+openssl x509 -noout -text \
+      -in 5_application/certs/$3.cert.pem
+
+
+echo 
+echo Validate the certificate has the correct chain of trust
+echo ---
+openssl verify -CAfile 2_intermediate/certs/ca-chain.cert.pem \
+      5_application/certs/$3.cert.pem
+
+
+echo
+echo Generate the client key
+echo ---
+mkdir -p 6_client/private
+openssl genrsa \
+    -passout pass:$4 \
+    -out 6_client/private/$3.key.pem 2048
+
+chmod 444 6_client/private/$3.key.pem
+
+
+echo
+echo Generate the client signing request
+echo ---
+mkdir -p 6_client/csr
+openssl req -config intermediate_openssl.cnf \
+      -subj "/C=US/ST=Denial/L=Springfield/O=Dis/CN=$3" \
+      -passin pass:$4 \
+      -key 6_client/private/$3.key.pem \
+      -new -sha256 -out 6_client/csr/$3.csr.pem
+
+
+echo 
+echo Create the client certificate
+echo ---
+mkdir -p 6_client/certs
+openssl ca -config intermediate_openssl.cnf \
+      -passin pass:$4 \
+      -extensions usr_cert -days 375 -notext -md sha256 \
+      -in 6_client/csr/$3.csr.pem \
+      -out 6_client/certs/$3.cert.pem
+
+chmod 444 6_client/certs/$3.cert.pem
+
+fi
+fi
